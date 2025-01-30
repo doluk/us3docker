@@ -92,7 +92,7 @@ RUN wget https://download.qt.io/archive/qt/$QT_M_VERSION/$QT_VERSION/single/qt-e
     cd .. && rm -r qt-everywhere-src-$QT_VERSION
 
 # BUILD QWT
-RUN wget https://versaweb.dl.sourceforge.net/project/qwt/qwt/$QWT_VERSION}/qwt-$QWT_VERSION.tar.bz2 &&  \
+RUN wget https://versaweb.dl.sourceforge.net/project/qwt/qwt/$QWT_VERSION/qwt-$QWT_VERSION.tar.bz2 &&  \
     tar jxf qwt-$QWT_VERSION.tar.bz2 &&  \
     cd qwt-$QWT_VERSION && sed -i 's|/usr/local/qwt|/opt/qwt|' qwtconfig.pri && $QTBIN/qmake qwt.pro &&  \
     make -j$PARALLEL_COMPILE && make install && $QTBIN/qmake -set QMAKEFEATURES $QWTDIR/features && \
