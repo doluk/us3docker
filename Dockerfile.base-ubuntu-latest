@@ -1,0 +1,106 @@
+# Dockerfile for us3 compiles
+
+### exposed ARGs override defaults with --build-arg <varname>=<value>
+FROM ubuntu:latest AS ubuntu
+ARG PARALLEL_COMPILE=32
+
+ARG QT_VERSION=5.15.16
+ARG QT_M_VERSION=5.15
+ARG QWT_VERSION=6.3.0
+
+# needed vor "opensource-" variants of qt source
+ARG qt_opensource=opensource-
+
+# needed for python apt variants, e.g. ubuntu22 needs python3
+ARG apt_python_version=python3
+ARG DEBIAN_FRONTEND=noninteractive
+
+
+ARG US_LOCATION=/ultrascan3
+
+ENV ULTRASCAN=$US_LOCATION
+ENV US_GUI=$US_LOCATION
+ENV US3DIR=$US_LOCATION
+ENV US3BIN=$US_LOCATION/bin
+ENV US3LIB=$US_LOCATION/lib
+ENV us3=$US_LOCATION
+
+ENV QTDIR=/qt-$QT_VERSION
+ENV QTBIN=/qt-$QT_VERSION/bin
+ENV QTLIB=/qt-$QT_VERSION/lib
+ENV QTINC=/qt-$QT_VERSION/include
+ENV QWTDIR=/qwt-$QWT_VERSION
+ENV QWTPATH=/qwt-$QWT_VERSION
+ENV QWTBIN=/qwt-$QWT_VERSION/bin
+ENV QWTLIB=/qwt-$QWT_VERSION/lib
+ENV QWTINC=/qwt-$QWT_VERSION/include
+
+
+ENV QT_VERSION $QT_VERSION
+ENV DISPLAY :0
+# Basic stuff
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends apt-utils && \
+    apt-get install -y software-properties-common subversion git curl wget bc rsync ca-certificates netbase gpg vim \
+    bind9-host tzdata zlib1g-dev pkg-config re2c openssh-server nano emacs-nox xorg x11-apps telnet libarchive-dev  \
+    gdb && \
+    apt-get install -y ${apt_python_version} ${apt_python_version}-pip perl && \
+    apt-get -y upgrade && \
+    apt-get clean && \
+    apt-get autoremove && \
+    rm -rf /var/lib/apt/lists/*
+
+# wayland stuff
+RUN apt-get -y update && apt-get install -y --no-install-recommends \
+    libwayland-client0 \
+    libwayland-server0 \
+    libglx-mesa0 \
+    libegl1 \
+    mesa-utils-extra \
+    && apt-get clean && apt-get autoremove && rm -rf /var/lib/apt/lists/*
+
+
+
+# Double check everything QT needs is there according to https://wiki.qt.io/Building_Qt_5_from_Git#Linux/X11
+RUN apt-get -y update && apt-get install -y  \
+    '^libxcb.*-dev'  \
+    libglu1-mesa-dev  libgtk-3-common \
+    libxrender-dev  \
+    libxi-dev  libpthreadpool-dev libpthread-workqueue-dev \
+    libxkbcommon-dev libxcb1-dev libx11-xcb-dev \
+    libxkbcommon-x11-dev libclang-dev \
+    freeglut3-dev mesa-common-dev libglew-dev libglfw3-dev libglm-dev libao-dev libmpg123-dev \
+    flex bison gperf libicu-dev libxslt-dev ruby \
+    libxcursor-dev libxcomposite-dev libxdamage-dev libxrandr-dev libxtst-dev libxss-dev libdbus-1-dev libevent-dev  \
+    libfontconfig1-dev libcap-dev libpulse-dev libudev-dev libpci-dev libnss3-dev libasound2-dev libegl1-mesa-dev  \
+    gperf bison nodejs \
+    libatspi2.0-dev libdbus-1-dev \
+    clang libclang-dev \
+    && apt-get clean && apt-get autoremove && rm -rf /var/lib/apt/lists/*
+
+# Configure xcb-xlib
+RUN mkdir /usr/X11R6 && ln -s /usr/lib/x86_64-linux-gnu /usr/X11R6/lib64
+
+# BUILD QT
+RUN wget https://download.qt.io/archive/qt/$QT_M_VERSION/$QT_VERSION/single/qt-everywhere-${qt_opensource}src-$QT_VERSION.tar.xz \
+    && XZ_DEFAULTS="-T 0" tar Jxf qt-everywhere-${qt_opensource}src-$QT_VERSION.tar.xz \
+    && cd qt-everywhere-src-$QT_VERSION && \
+    env MAKEFLAGS=-j$PARALLEL_COMPILE ./configure -prefix $QTDIR -release -opensource -confirm-license  \
+    -platform linux-g++-64 -nomake tests -nomake examples -xcb -xcb-xlib -D QT_SHAREDMEMORY -D QT_SYSTEMSEMAPHORE  \
+    -no-icu -skip webengine -skip location && \
+    nohup make -j$PARALLEL_COMPILE 2>&1 > make.out && nohup make install -j1 2>&1 > makeinstall.out && \
+    cd .. && rm -r qt-everywhere-src-$QT_VERSION
+
+# BUILD QWT
+RUN wget https://versaweb.dl.sourceforge.net/project/qwt/qwt/$QWT_VERSION}/qwt-$QWT_VERSION.tar.bz2 &&  \
+    tar jxf qwt-$QWT_VERSION.tar.bz2 &&  \
+    cd qwt-$QWT_VERSION && sed -i 's|/usr/local/qwt|/opt/qwt|' qwtconfig.pri && $QTBIN/qmake qwt.pro &&  \
+    make -j$PARALLEL_COMPILE && make install && $QTBIN/qmake -set QMAKEFEATURES $QWTDIR/features && \
+    cd .. && rm -r qwt-$QWT_VERSION
+
+
+ENV PATH="$US3BIN:$QTBIN:$PATH"
+ENV LD_LIBRARY_PATH="$US3LIB:$QTLIB:$QWTLIB:$LD_LIBRARY_PATH"
+ENV QT_PLUGIN_PATH="$QT_PLUGIN_PATH:$QWTDIR/plugins"
+
+
